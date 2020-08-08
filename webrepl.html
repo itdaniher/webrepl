@@ -39,7 +39,7 @@
     background: #888;
   }
 </style>
-<script src="term.js"></script>
+<script src="xterm.min.js"></script>
 <script src="FileSaver.js"></script>
 </head>
 <body>
@@ -88,7 +88,7 @@ var put_file_name = null;
 var put_file_data = null;
 var get_file_name = null;
 var get_file_data = null;
-
+var saved_password;
 function calculate_size(win) {
     var cols = Math.max(80, Math.min(150, (win.innerWidth - 280) / 7)) | 0;
     var rows = Math.max(24, Math.min(80, (win.innerHeight - 180) / 12)) | 0;
@@ -97,9 +97,13 @@ function calculate_size(win) {
 
 (function() {
     window.onload = function() {
-      var url = window.location.hash.substring(1);
+      var [url, pass] = window.location.hash.substring(1).split(';');
       if (url) {
         document.getElementById('url').value = 'ws://' + url;
+        connect(document.getElementById('url').value);
+      }
+      if (pass) {
+          saved_password = pass
       }
       var size = calculate_size(self);
       term = new Terminal({
@@ -116,6 +120,7 @@ function calculate_size(win) {
         var size = calculate_size(self);
         term.resize(size[0], size[1]);
     });
+
 }).call(this);
 
 function show_https_warning() {
@@ -152,12 +157,18 @@ function update_file_status(s) {
     document.getElementById('file-status').innerHTML = s;
 }
 
+function managePasswordReq(data) {
+    if(typeof data == 'string' && data.indexOf('Password:') > -1 && saved_password) {
+        term.write('\x1b[36mAttempting AutoLogin\x1b[m\r\n');
+        ws.send(saved_password + "\r");
+    }
+}
+
 function connect(url) {
     window.location.hash = url.substring(5);
     ws = new WebSocket(url);
     ws.binaryType = 'arraybuffer';
     ws.onopen = function() {
-        term.removeAllListeners('data');
         term.on('data', function(data) {
             // Pasted data from clipboard will likely contain
             // LF as EOL chars.
@@ -172,6 +183,7 @@ function connect(url) {
         term.focus();
         term.element.focus();
         term.write('\x1b[31mWelcome to MicroPython!\x1b[m\r\n');
+
 
         ws.onmessage = function(event) {
             if (event.data instanceof ArrayBuffer) {
@@ -249,6 +261,7 @@ function connect(url) {
                 }
             }
             term.write(event.data);
+            managePasswordReq(event.data);
         };
     };
 
